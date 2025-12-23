@@ -11,8 +11,10 @@ from sqlalchemy import (
     Index,
     UniqueConstraint,
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+# from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship, declarative_base
+from sqlalchemy import text
+
 
 Base = declarative_base()
 
@@ -214,7 +216,7 @@ def parse_tei_file(file_path, session):
             context=context,
         )
         session.add(word_entry)
-
+    print(len(w_elements))
     # Process <span> elements for phrasemes
     span_elements = body.findall('.//tei:span[@type="baseForm"]', TEI_NS)
     if not span_elements:
@@ -297,11 +299,11 @@ def process_folder(folder_path, db_path="tei_database.db"):
     # Create additional indexes after bulk insert (more efficient)
     print("\nOptimizing database...")
     with engine.connect() as conn:
-        conn.execute(
-            "PRAGMA journal_mode=WAL;"
+        conn.execute(text(
+            "PRAGMA journal_mode=WAL;")
         )  # Write-Ahead Logging for better concurrency
-        conn.execute("PRAGMA synchronous=NORMAL;")  # Faster writes
-        conn.execute("ANALYZE;")  # Update statistics for query optimizer
+        conn.execute(text("PRAGMA synchronous=NORMAL;"))  # Faster writes
+        conn.execute(text("ANALYZE;"))  # Update statistics for query optimizer
 
     session.close()
 
@@ -309,15 +311,18 @@ def process_folder(folder_path, db_path="tei_database.db"):
 
     # Print statistics
     with engine.connect() as conn:
-        stats = conn.execute("""
+        stats = conn.execute(text("""
             SELECT 
                 (SELECT COUNT(*) FROM TEXTS) as texts,
                 (SELECT COUNT(*) FROM WORDS) as words,
                 (SELECT COUNT(*) FROM CONCEPTS) as concepts,
                 (SELECT COUNT(*) FROM PHRASEMES) as phrasemes
-        """).fetchone()
+        """)).fetchone()
         print(f"\nDatabase Statistics:")
         print(f"  Texts: {stats[0]}")
         print(f"  Words: {stats[1]}")
         print(f"  Concepts: {stats[2]}")
         print(f"  Phrasemes: {stats[3]}")
+
+
+process_folder("tei-xml-ids")
