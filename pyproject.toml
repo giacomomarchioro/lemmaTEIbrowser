@@ -1,6 +1,6 @@
 [project]
 name = "lemmaTEIbrowser"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Flask application for browsing and querying lemmatized TEI XML texts"
 requires-python = ">=3.9"
 
