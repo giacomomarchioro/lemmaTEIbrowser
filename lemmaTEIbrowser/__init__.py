@@ -23,10 +23,6 @@ def create_app(config_class=Config):
     # Main route
     @app.route('/')
     def index():
-        return render_template('index.html')
-    
-    @app.route('/list')
-    def list_view():
         return render_template('list.html')
 
     return app
