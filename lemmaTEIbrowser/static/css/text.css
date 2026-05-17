@@ -1,0 +1,10 @@
+body{max-width:800px;margin:2rem auto;padding:0 1.5rem;font-family:Georgia,serif;
+     line-height:1.8;color:#1a1a1a}
+.text-header{border-bottom:1px solid #ccc;margin-bottom:2rem;padding-bottom:.75rem}
+.text-header h1{margin:.25rem 0}
+.text-author,.text-date,.text-id{margin:.1rem 0;color:#666;font-style:italic;font-size:.9rem}
+section{margin-bottom:2.5rem}
+h2{font-size:.95rem;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.3rem}
+span.w{cursor:pointer}
+span.w:target,span.w.w--highlight{
+  background:#ffe08a;border-radius:2px;outline:2px solid #f0b429}
