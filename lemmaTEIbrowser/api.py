@@ -146,7 +146,9 @@ def search_by_concept_id(session, concept_id, not_before, not_after, text_ids, o
 def search_by_concept(session, query, not_before, not_after, text_ids, offset, size):
     """Search by concept URL."""
     concept = session.query(Concept).filter(
-        Concept.URLconcept.ilike(f'%{query}%')
+        # we suppose concept might be at the end of a link, regardless the link
+        # might be wise not hardcoding it in the future
+        Concept.URLconcept.ilike(f'%/{query}')
     ).first()
     
     if not concept:

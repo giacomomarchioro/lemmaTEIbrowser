@@ -376,6 +376,39 @@
         let totalPages = 1;
         let currentParams = {};
 
+        // Initialize from URL parameters on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // Populate form fields from URL
+            if (urlParams.has('q')) {
+                document.getElementById('search-query').value = urlParams.get('q');
+            }
+            if (urlParams.has('type')) {
+                document.getElementById('search-type').value = urlParams.get('type');
+            }
+            if (urlParams.has('concept_id')) {
+                document.getElementById('concept-id').value = urlParams.get('concept_id');
+            }
+            if (urlParams.has('notBefore')) {
+                document.getElementById('filter-notBefore').value = urlParams.get('notBefore');
+            }
+            if (urlParams.has('notAfter')) {
+                document.getElementById('filter-notAfter').value = urlParams.get('notAfter');
+            }
+            if (urlParams.has('text_id')) {
+                document.getElementById('filter-text-ids').value = urlParams.get('text_id');
+            }
+            if (urlParams.has('page')) {
+                currentPage = parseInt(urlParams.get('page'));
+            }
+            
+            // Perform search if query parameters exist
+            if (urlParams.has('q') || urlParams.has('concept_id')) {
+                performSearch();
+            }
+        });
+
         // Search button click
         document.getElementById('search-btn').addEventListener('click', function() {
             currentPage = 1;
@@ -456,6 +489,10 @@
             }
 
             currentParams = Object.fromEntries(params);
+
+            // Update browser URL without reload
+            const newUrl = `${window.location.pathname}?${params.toString()}`;
+            window.history.pushState({}, '', newUrl);
 
             // Show loading
             document.getElementById('results').innerHTML = '<div class="loading">Caricamento</div>';
