@@ -210,3 +210,5 @@ xml-tei/
 .DS_Store
 tei_database.db
 lemmaTEIbrowser/static/texts
+tei_database.db-shm
+tei_database.db-wal
