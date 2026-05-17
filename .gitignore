@@ -209,3 +209,4 @@ __marimo__/
 xml-tei/
 .DS_Store
 tei_database.db
+lemmaTEIbrowser/static/texts
