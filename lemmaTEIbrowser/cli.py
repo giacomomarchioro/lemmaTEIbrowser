@@ -23,18 +23,6 @@ TEXTS_DIR   = _PKG_DIR / 'static' / 'texts'
 
 
 # ---------------------------------------------------------------------------
-# Slug helper
-# ---------------------------------------------------------------------------
-
-def _slugify(text: str) -> str:
-    """ASCII slug: lowercase, spaces → hyphens, strip unsafe chars."""
-    text = text.lower().strip()
-    text = re.sub(r'[^\w\s-]', '', text)
-    text = re.sub(r'[\s_]+', '-', text)
-    return text[:80]   # cap length
-
-
-# ---------------------------------------------------------------------------
 # HTML generation
 # ---------------------------------------------------------------------------
 
@@ -47,8 +35,7 @@ def generate_html(file_path: Path, text_entry: TextEntry, output_dir: Path) -> P
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    slug    = _slugify(text_entry.title or file_path.stem)
-    out_name = f"{text_entry.id}_{slug}.html"
+    out_name = f"{file_path.stem}.html"
     out_path = output_dir / out_name
 
     # Re-parse with lxml (stdlib ET is already used for the DB side; keep them
@@ -185,7 +172,7 @@ def parse_tei_file(file_path: Path, session) -> TextEntry | None:
 
     text_entry = TextEntry(
         author=author, title=title,
-        notBefore=not_before, notAfter=not_after,
+        notBefore=not_before, notAfter=not_after,sourceFile=file_path.stem
     )
     session.add(text_entry)
     session.flush()   # populate text_entry.id

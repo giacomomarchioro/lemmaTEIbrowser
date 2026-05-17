@@ -17,7 +17,7 @@ def get_occurrences():
     
     Query Parameters:
         q (str): Search query
-        type (str): 'word', 'phraseme', 'concept', or 'all' (default)
+        type (str): 'lemma', 'occurrence', 'phraseme', 'concept', 'alternativeLabel' (default: 'lemma')
         concept_id (int): Direct concept ID search
         notBefore (str): Filter by composition date
         notAfter (str): Filter by composition date
@@ -35,7 +35,7 @@ def get_occurrences():
         
         # Search parameters
         search_query = request.args.get('q')
-        search_type = request.args.get('type', 'all')
+        search_type = request.args.get('type', 'lemma')
         concept_id = request.args.get('concept_id', type=int)
         
         # Filters
@@ -43,48 +43,84 @@ def get_occurrences():
         not_after = request.args.get('notAfter')
         text_ids = request.args.get('text_id')
         
-        results = []
+        all_results = []
         total_count = 0
         
         # Priority: concept_id search
         if concept_id:
             data = search_by_concept_id(
-                session, concept_id, not_before, not_after, text_ids, offset, size
+                session, concept_id, not_before, not_after, text_ids, 0, 9999
             )
-            results = data['results']
+            all_results = data['results']
             total_count = data['count']
         
-        # Text-based search
+        # Text-based search by type
         elif search_query:
-            if search_type in ['concept', 'all']:
-                data = search_by_concept(
-                    session, search_query, not_before, not_after, text_ids, offset, size
+            if search_type == 'lemma':
+                # Search only by lemma
+                data = search_by_lemma(
+                    session, search_query, not_before, not_after, text_ids, 0, 9999
                 )
-                results.extend(data['results'])
-                total_count += data['count']
-            
-            if search_type in ['word', 'all']:
-                data = search_by_word(
-                    session, search_query, not_before, not_after, text_ids, offset, size
+                all_results = data['results']
+                
+            elif search_type == 'occurrence':
+                # Search only by occurrence
+                data = search_by_occurrence(
+                    session, search_query, not_before, not_after, text_ids, 0, 9999
                 )
-                results.extend(data['results'])
-                total_count += data['count']
-            
-            if search_type in ['phraseme', 'all']:
+                all_results = data['results']
+                
+            elif search_type == 'phraseme':
+                # Search only by normalized_form
                 data = search_by_phraseme(
-                    session, search_query, not_before, not_after, text_ids, offset, size
+                    session, search_query, not_before, not_after, text_ids, 0, 9999
                 )
-                results.extend(data['results'])
-                total_count += data['count']
+                all_results = data['results']
+                
+            elif search_type == 'concept':
+                # Search by concept URL
+                data = search_by_concept(
+                    session, search_query, not_before, not_after, text_ids, 0, 9999
+                )
+                all_results = data['results']
+                
+            elif search_type == 'alternativeLabel':
+                # Search both lemma AND normalized_form
+                lemma_data = search_by_lemma(
+                    session, search_query, not_before, not_after, text_ids, 0, 9999
+                )
+                phraseme_data = search_by_phraseme(
+                    session, search_query, not_before, not_after, text_ids, 0, 9999
+                )
+                all_results = lemma_data['results'] + phraseme_data['results']
+                
+            else:
+                return jsonify({'error': f'Invalid type: {search_type}. Use: lemma, occurrence, phraseme, concept, alternativeLabel'}), 400
+            
+            # Remove duplicates
+            seen = set()
+            unique_results = []
+            for result in all_results:
+                key = (result['type'], result['id'])
+                if key not in seen:
+                    seen.add(key)
+                    unique_results.append(result)
+            
+            all_results = unique_results
+            total_count = len(all_results)
+            
         else:
             return jsonify({'error': 'Either q or concept_id parameter required'}), 400
+        
+        # Apply pagination to combined results
+        paginated_results = all_results[offset:offset + size]
         
         # Pagination
         last_page = (total_count + size - 1) // size if total_count > 0 else 1
         
         # Extract unique texts
         text_dict = {}
-        for result in results[:size]:
+        for result in paginated_results:
             tid = result['text']['id']
             if tid not in text_dict:
                 text_dict[tid] = result['text']
@@ -95,7 +131,7 @@ def get_occurrences():
             'current_page': page,
             'per_page': size,
             'total_results': total_count,
-            'data': results[:size],
+            'data': paginated_results,
             'texts': list(text_dict.values())
         })
     
@@ -146,9 +182,7 @@ def search_by_concept_id(session, concept_id, not_before, not_after, text_ids, o
 def search_by_concept(session, query, not_before, not_after, text_ids, offset, size):
     """Search by concept URL."""
     concept = session.query(Concept).filter(
-        # we suppose concept might be at the end of a link, regardless the link
-        # might be wise not hardcoding it in the future
-        Concept.URLconcept.ilike(f'%/{query}')
+        Concept.URLconcept.ilike(f'%{query}%')
     ).first()
     
     if not concept:
@@ -157,17 +191,42 @@ def search_by_concept(session, query, not_before, not_after, text_ids, offset, s
     return search_by_concept_id(session, concept.id_concept, not_before, not_after, text_ids, offset, size)
 
 
+def search_by_lemma(session, query, not_before, not_after, text_ids, offset, size):
+    """Search words ONLY by lemma."""
+    word_query = session.query(Word).options(
+        joinedload(Word.text),
+        joinedload(Word.concept)
+    ).filter(Word.lemma.ilike(f'%{query}%'))
+    
+    word_query = apply_filters(word_query, Word, not_before, not_after, text_ids, session)
+    total = word_query.count()
+    words = word_query.limit(size).offset(offset).all()
+    
+    results = [build_word_result(w) for w in words]
+    return {'results': results, 'count': total}
+
+
+def search_by_occurrence(session, query, not_before, not_after, text_ids, offset, size):
+    """Search words ONLY by occurrence."""
+    word_query = session.query(Word).options(
+        joinedload(Word.text),
+        joinedload(Word.concept)
+    ).filter(Word.occurrence.ilike(f'%{query}%'))
+    
+    word_query = apply_filters(word_query, Word, not_before, not_after, text_ids, session)
+    total = word_query.count()
+    words = word_query.limit(size).offset(offset).all()
+    
+    results = [build_word_result(w) for w in words]
+    return {'results': results, 'count': total}
+
+
 def search_by_word(session, query, not_before, not_after, text_ids, offset, size):
     """Search words by lemma or occurrence."""
     word_query = session.query(Word).options(
         joinedload(Word.text),
         joinedload(Word.concept)
-    ).filter(
-        or_(
-            Word.lemma.ilike(f'%{query}%'),
-            Word.occurrence.ilike(f'%{query}%')
-        )
-    )
+    ).filter(Word.lemma.ilike(f'%{query}%'))  # ONLY lemma, not occurrence
     
     word_query = apply_filters(word_query, Word, not_before, not_after, text_ids, session)
     total = word_query.count()
@@ -281,3 +340,4 @@ def get_statistics():
         return jsonify({'error': str(e)}), 500
     finally:
         session.close()
+

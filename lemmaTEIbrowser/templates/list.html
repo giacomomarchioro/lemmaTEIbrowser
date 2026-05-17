@@ -340,10 +340,11 @@
             <div class="search-row">
                 <input type="text" id="search-query" placeholder="Cerca parola, lemma, frasema o concetto...">
                 <select id="search-type">
-                    <option value="all">Tutto</option>
-                    <option value="word">Solo parole</option>
-                    <option value="phraseme">Solo frasemi</option>
-                    <option value="concept">Per concetto</option>
+                    <option value="lemma">Lemma</option>
+                    <option value="occurrence">Occorrenza</option>
+                    <option value="phraseme">Frasema (forma norm.)</option>
+                    <option value="concept">Concetto</option>
+                    <option value="alternativeLabel">Lemma + Frasema</option>
                 </select>
             </div>
             
@@ -419,7 +420,7 @@
         document.getElementById('clear-btn').addEventListener('click', function() {
             document.getElementById('search-query').value = '';
             document.getElementById('concept-id').value = '';
-            document.getElementById('search-type').value = 'all';
+            document.getElementById('search-type').value = 'lemma';
             document.getElementById('filter-notBefore').value = '';
             document.getElementById('filter-notAfter').value = '';
             document.getElementById('filter-text-ids').value = '';

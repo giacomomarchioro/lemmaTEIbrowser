@@ -45,7 +45,7 @@ class TextEntry(Base):
     title = Column(String(500), nullable=False, index=True)
     notBefore = Column(String(50))
     notAfter = Column(String(50))
-    
+    sourceFile = Column(String(80))
     words = relationship("Word", back_populates="text", cascade="all, delete-orphan")
     phrasemes = relationship("Phraseme", back_populates="text", cascade="all, delete-orphan")
     
