@@ -288,7 +288,8 @@ def build_word_result(word, concept=None):
             'author': word.text.author,
             'title': word.text.title,
             'notBefore': word.text.notBefore,
-            'notAfter': word.text.notAfter
+            'notAfter': word.text.notAfter,
+            'sourceFile': word.text.sourceFile
         }
     }
 
@@ -318,7 +319,8 @@ def build_phraseme_result(phraseme, concept=None):
             'author': phraseme.text.author,
             'title': phraseme.text.title,
             'notBefore': phraseme.text.notBefore,
-            'notAfter': phraseme.text.notAfter
+            'notAfter': phraseme.text.notAfter,
+            'sourceFile': phraseme.text.sourceFile
         }
     }
 

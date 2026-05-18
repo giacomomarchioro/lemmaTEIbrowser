@@ -228,6 +228,23 @@
             color: #555;
         }
 
+        .source-link {
+            display: inline-block;
+            margin-left: 8px;
+            color: #1565c0;
+            text-decoration: none;
+            font-size: 0.9em;
+            border-bottom: 1px dotted #1565c0;
+        }
+
+        .source-link:hover {
+            border-bottom-style: solid;
+        }
+
+        .source-link::before {
+            content: "→ ";
+        }
+
         .concept-link {
             color: #1565c0;
             text-decoration: none;
@@ -578,7 +595,7 @@
             // Metadata
             html += '<div class="metadata">';
             
-            // Source
+            // Source with link to full text
             html += '<div class="metadata-row">';
             html += '<span class="metadata-label">Fonte:</span>';
             html += `<span class="source">${item.text.author}, <em>${item.text.title}</em>`;
@@ -587,6 +604,14 @@
                 html += ` (${dates})`;
             }
             html += '</span>';
+            
+            // Add link to full text if sourceFile exists
+            if (item.text.sourceFile && item.xml_id) {
+                const xmlId = Array.isArray(item.xml_id) ? item.xml_id[0] : item.xml_id;
+                const textUrl = `/static/texts/${item.text.sourceFile}.tei.html?w=${xmlId}`;
+                html += `<a href="${textUrl}" class="source-link" target="_blank">Vedi nel testo</a>`;
+            }
+            
             html += '</div>';
             
             // Concept
