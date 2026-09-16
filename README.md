@@ -1,9 +1,34 @@
 # lemmaTEIbrowser
 A tool for creating databases of lemmas from a folder containing TEI files.
 
+# Install
+
+```
+git clone https://github.com/giacomomarchioro/lemmaTEIbrowser
+cd lemmaTEIbrowser
+pip install -e .
+```
 
 
+# Import from TEI
+First we have to download a dataset containing a folder with TEI files tagged:
 
+```
+git clone https://github.com/gpdsm/DiSMIdataset
+```
+Now we can use the command `lemma-import` to import the entries:
+
+```
+lemma-import ./tei-xml-ids
+```
+After the import is completed we use the command:
+
+```
+lemma-serve 
+```
+To run the application. The application will be available at http://127.0.0.1:5000.
+
+# 
 
 Ricerca per lemma:
 http://localhost:5000/?q=verso&type=lemma
