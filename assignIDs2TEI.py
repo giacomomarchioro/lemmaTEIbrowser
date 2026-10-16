@@ -1,6 +1,7 @@
 import os
 from lxml import etree
 from pathlib import Path
+from lemmaTEIbrowser.xml_utils import ensure_word_ids
 
 def process_tei_file(input_file, output_file):
     """
@@ -10,33 +11,11 @@ def process_tei_file(input_file, output_file):
         input_file: Path to input TEI file
         output_file: Path to output TEI file
     """
-    # Define TEI namespace
-    TEI_NS = "http://www.tei-c.org/ns/1.0"
-    XML_NS = "http://www.w3.org/XML/1998/namespace"
-    nsmap = {None: TEI_NS, 'xml': XML_NS}
-    
     # Parse the TEI file
     tree = etree.parse(input_file)
     root = tree.getroot()
     
-    # Find all <w> elements
-    w_elements = root.xpath('//tei:w', namespaces={'tei': TEI_NS})
-    
-    # Counter for generating unique IDs
-    id_counter = 1
-    
-    # Get the base filename without extension for ID prefix
-    base_name = Path(input_file).stem
-    
-    for w_elem in w_elements:
-        # Check if the element already has an xml:id attribute
-        existing_id = w_elem.get(f'{{{XML_NS}}}id')
-        
-        if existing_id is None:
-            # Generate a unique xml:id
-            new_id = f"l_w{str(id_counter).zfill(4)}"
-            w_elem.set(f'{{{XML_NS}}}id', new_id)
-            id_counter += 1
+    added_count = ensure_word_ids(root)
     
     # Write the modified tree to output file
     tree.write(
@@ -47,7 +26,7 @@ def process_tei_file(input_file, output_file):
     )
     
     print(f"Processed: {input_file} -> {output_file}")
-    print(f"  Added xml:id to {id_counter - 1} <w> elements")
+    print(f"  Added xml:id to {added_count} <w> elements")
 
 def process_tei_folder(input_folder, output_folder):
     """
