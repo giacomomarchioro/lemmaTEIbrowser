@@ -1,3 +1,9 @@
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+}
+
 // Initialize Tabulator table
 var table = new Tabulator("#results-table", {
     ajaxURL: "/api/v1/occurrences",
@@ -62,7 +68,13 @@ var table = new Tabulator("#results-table", {
                 const url = cell.getValue();
                 if (!url) return '';
                 const label = url.split('/').pop();
-                return `<a href="${url}" target="_blank">${label}</a>`;
+                try {
+                    const parsed = new URL(url);
+                    if (!['http:', 'https:'].includes(parsed.protocol)) return escapeHtml(label);
+                    return `<a href="${escapeHtml(parsed.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+                } catch {
+                    return escapeHtml(label);
+                }
             }
         },
         {
@@ -71,7 +83,7 @@ var table = new Tabulator("#results-table", {
             width: 300,
             formatter: function(cell) {
                 const text = cell.getValue();
-                return `${text.author}, <em>${text.title}</em> (${text.notBefore || '?'})`;
+                return `${escapeHtml(text.author)}, <em>${escapeHtml(text.title)}</em> (${escapeHtml(text.notBefore || '?')})`;
             }
         },
         {
@@ -81,7 +93,7 @@ var table = new Tabulator("#results-table", {
             formatter: function(cell) {
                 const context = cell.getValue();
                 if (!context) return '';
-                return '<span class="context">' + context.substring(0, 100) + '...</span>';
+                return '<span class="context">' + escapeHtml(context.substring(0, 100)) + '...</span>';
             }
         },
         {
@@ -91,9 +103,9 @@ var table = new Tabulator("#results-table", {
             formatter: function(cell) {
                 const ids = cell.getValue();
                 if (Array.isArray(ids)) {
-                    return ids.join(', ');
+                    return escapeHtml(ids.join(', '));
                 }
-                return ids || '';
+                return escapeHtml(ids);
             }
         }
     ],
