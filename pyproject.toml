@@ -8,6 +8,7 @@ dependencies = [
     "flask>=3.0.0",
     "sqlalchemy>=2.0.0",
     "click>=8.1.0",
+    "lxml>=4.9.0",
 ]
 
 [project.optional-dependencies]
@@ -22,6 +23,9 @@ include = ["lemmaTEIbrowser"]
 [project.scripts]
 lemma-import = "lemmaTEIbrowser.cli:import_tei"
 lemma-serve = "lemmaTEIbrowser.cli:serve"
+
+[tool.setuptools.package-data]
+lemmaTEIbrowser = ["templates/*.html", "static/*.js", "static/*.css", "static/css/*.css"]
 
 [build-system]
 requires = ["setuptools>=65.0"]
