@@ -18,6 +18,8 @@ Linking to a specific word:
 import sys
 import re
 from lxml import etree
+from html import escape
+from lemmaTEIbrowser.tei_converter import _el_to_html
 
 TEI_NS = "http://www.tei-c.org/ns/1.0"
 
@@ -28,39 +30,7 @@ def tag(el):
 
 def el_to_html(el) -> str:
     """Recursively convert a TEI element to an HTML string."""
-    t = tag(el)
-
-    # --- <w> → <span class="w" id="..."> ---
-    if t == "w":
-        wid = el.get("{http://www.w3.org/XML/1998/namespace}id") or el.get("xml:id", "")
-        id_attr = f' id="{wid}"' if wid else ""
-        inner = (el.text or "") + "".join(el_to_html(c) for c in el)
-        tail  = el.tail or ""
-        return f'<span class="w"{id_attr}>{inner}</span>{tail}'
-
-    # --- <head> → <h2> ---
-    if t == "head":
-        inner = (el.text or "") + "".join(el_to_html(c) for c in el)
-        tail  = el.tail or ""
-        return f"<h2>{inner}</h2>{tail}"
-
-    # --- <p> → <p> ---
-    if t == "p":
-        inner = (el.text or "") + "".join(el_to_html(c) for c in el)
-        tail  = el.tail or ""
-        return f"<p>{inner}</p>{tail}"
-
-    # --- <div> → <section> ---
-    if t == "div":
-        dtype = el.get("type", "")
-        inner = (el.text or "") + "".join(el_to_html(c) for c in el)
-        tail  = el.tail or ""
-        return f'<section class="div-{dtype}">{inner}</section>{tail}'
-
-    # --- anything else: recurse, keep text ---
-    inner = (el.text or "") + "".join(el_to_html(c) for c in el)
-    tail  = el.tail or ""
-    return inner + tail
+    return _el_to_html(el)
 
 
 def extract_meta(root) -> dict:
@@ -145,7 +115,7 @@ HTML_TEMPLATE = """\
 
 
 def convert(xml_path: str) -> str:
-    tree = etree.parse(xml_path)
+    tree = etree.parse(xml_path, etree.XMLParser(resolve_entities=False, no_network=True))
     root = tree.getroot()
     meta = extract_meta(root)
 
@@ -155,12 +125,12 @@ def convert(xml_path: str) -> str:
         raise ValueError("<body> element not found in TEI file.")
     body_el = bodies[0]
 
-    body_html = (body_el.text or "") + "".join(el_to_html(c) for c in body_el)
+    body_html = escape(body_el.text or "") + "".join(el_to_html(c) for c in body_el)
 
     return HTML_TEMPLATE.format(
-        title=meta["title"] or "TEI Document",
-        author=meta["author"],
-        date=meta["date"],
+        title=escape(meta["title"] or "TEI Document"),
+        author=escape(meta["author"]),
+        date=escape(meta["date"]),
         body=body_html,
     )
 
