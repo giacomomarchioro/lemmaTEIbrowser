@@ -517,7 +517,10 @@
 
             // Fetch results
             fetch(`/api/v1/occurrences?${params.toString()}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) throw new Error(`Search failed: ${response.status}`);
+                    return response.json();
+                })
                 .then(data => {
                     displayResults(data);
                 })
@@ -572,8 +575,8 @@
 
         function buildEntry(item) {
             const isPhraseme = item.type === 'phraseme';
-            const headword = item.occurrence;
-            const lemma = isPhraseme ? item.normalized_form : item.lemma;
+            const headword = escapeHtml(item.occurrence);
+            const lemma = escapeHtml(isPhraseme ? item.normalized_form : item.lemma);
             const context = highlightOccurrence(item.context, item.occurrence);
             
             let html = '<div class="entry">';
@@ -584,7 +587,7 @@
             if (lemma) {
                 html += `<span class="lemma">${lemma}</span>`;
             }
-            html += `<span class="type-badge ${item.type}">${isPhraseme ? 'frasema' : 'parola'}</span>`;
+            html += `<span class="type-badge ${isPhraseme ? 'phraseme' : 'word'}">${isPhraseme ? 'frasema' : 'parola'}</span>`;
             html += '</div>';
             
             // Context
@@ -598,17 +601,17 @@
             // Source with link to full text
             html += '<div class="metadata-row">';
             html += '<span class="metadata-label">Fonte:</span>';
-            html += `<span class="source">${item.text.author}, <em>${item.text.title}</em>`;
+            html += `<span class="source">${escapeHtml(item.text.author)}, <em>${escapeHtml(item.text.title)}</em>`;
             if (item.text.notBefore || item.text.notAfter) {
                 const dates = [item.text.notBefore, item.text.notAfter].filter(d => d).join(' – ');
-                html += ` (${dates})`;
+                html += ` (${escapeHtml(dates)})`;
             }
             html += '</span>';
             
             // Add link to full text if sourceFile exists
             if (item.text.sourceFile && item.xml_id) {
                 const xmlId = Array.isArray(item.xml_id) ? item.xml_id[0] : item.xml_id;
-                const textUrl = `/static/texts/${item.text.sourceFile}.tei.html?w=${xmlId}`;
+                const textUrl = `/static/texts/${encodeURIComponent(item.text.sourceFile)}.tei.html?w=${encodeURIComponent(xmlId || '')}`;
                 html += `<a href="${textUrl}" class="source-link" target="_blank">Vedi nel testo</a>`;
             }
             
@@ -619,7 +622,10 @@
                 html += '<div class="metadata-row">';
                 html += '<span class="metadata-label">Concetto:</span>';
                 const conceptLabel = item.concept.url.split('/').pop();
-                html += `<a href="${item.concept.url}" class="concept-link" target="_blank">${conceptLabel}</a>`;
+                const conceptUrl = safeUrl(item.concept.url);
+                html += conceptUrl
+                    ? `<a href="${escapeHtml(conceptUrl)}" class="concept-link" target="_blank" rel="noopener noreferrer">${escapeHtml(conceptLabel)}</a>`
+                    : escapeHtml(conceptLabel);
                 html += '</div>';
             }
             
@@ -628,9 +634,9 @@
                 html += '<div class="metadata-row">';
                 html += '<span class="metadata-label">XML ID:</span>';
                 if (Array.isArray(item.xml_id)) {
-                    html += item.xml_id.map(id => `<span class="xml-id">${id}</span>`).join(' ');
+                    html += item.xml_id.map(id => `<span class="xml-id">${escapeHtml(id)}</span>`).join(' ');
                 } else {
-                    html += `<span class="xml-id">${item.xml_id}</span>`;
+                    html += `<span class="xml-id">${escapeHtml(item.xml_id)}</span>`;
                 }
                 html += '</div>';
             }
@@ -642,7 +648,7 @@
         }
 
         function highlightOccurrence(context, occurrence) {
-            if (!context || !occurrence) return context;
+            if (!context || !occurrence) return escapeHtml(context);
             
             // Escape special regex characters
             const escapedOccurrence = occurrence.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -650,7 +656,29 @@
             // Create regex for case-insensitive match
             const regex = new RegExp(`\\b(${escapedOccurrence})\\b`, 'gi');
             
-            return context.replace(regex, '<span class="highlight">$1</span>');
+            let result = '';
+            let end = 0;
+            for (const match of context.matchAll(regex)) {
+                result += escapeHtml(context.slice(end, match.index));
+                result += `<span class="highlight">${escapeHtml(match[0])}</span>`;
+                end = match.index + match[0].length;
+            }
+            return result + escapeHtml(context.slice(end));
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[char]);
+        }
+
+        function safeUrl(value) {
+            try {
+                const url = new URL(value);
+                return ['https:', 'http:'].includes(url.protocol) ? url.href : '';
+            } catch {
+                return '';
+            }
         }
     </script>
 </body>
