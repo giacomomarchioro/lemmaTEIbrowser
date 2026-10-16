@@ -12,6 +12,7 @@ Public API
 
 from __future__ import annotations
 from lxml import etree
+from html import escape
 
 TEI_NS = "http://www.tei-c.org/ns/1.0"
 XML_NS = "http://www.w3.org/XML/1998/namespace"
@@ -24,6 +25,8 @@ XML_NS = "http://www.w3.org/XML/1998/namespace"
 def _local(el) -> str:
     """Tag name without namespace prefix."""
     t = el.tag
+    if not isinstance(t, str):
+        return ''
     return t.split("}")[-1] if "}" in t else t
 
 
@@ -38,30 +41,32 @@ def _el_to_html(el) -> str:
     whitespace / punctuation stays in the flow.
     """
     t = _local(el)
-    tail = el.tail or ""
+    tail = escape(el.tail or "")
+    if not isinstance(el.tag, str):
+        return tail
 
     # <w> → <span class="w" id="…">
     if t == "w":
         wid = _xml_id(el)
-        id_attr = f' id="{wid}"' if wid else ""
-        inner = (el.text or "") + "".join(_el_to_html(c) for c in el)
+        id_attr = f' id="{escape(wid, quote=True)}"' if wid else ""
+        inner = escape(el.text or "") + "".join(_el_to_html(c) for c in el)
         return f'<span class="w"{id_attr}>{inner}</span>{tail}'
 
     # <head> → <h2>  (multiple <head> inside one <div> are all h2)
     if t == "head":
-        inner = (el.text or "") + "".join(_el_to_html(c) for c in el)
+        inner = escape(el.text or "") + "".join(_el_to_html(c) for c in el)
         return f"<h2>{inner}</h2>{tail}"
 
     # <p> / <ab> → <p>
     if t in ("p", "ab"):
-        inner = (el.text or "") + "".join(_el_to_html(c) for c in el)
+        inner = escape(el.text or "") + "".join(_el_to_html(c) for c in el)
         return f"<p>{inner}</p>{tail}"
 
     # <div> → <section class="div-TYPE">
     if t == "div":
         dtype = el.get("type", "")
-        cls = f'div-{dtype}' if dtype else "div"
-        inner = (el.text or "") + "".join(_el_to_html(c) for c in el)
+        cls = escape(f'div-{dtype}' if dtype else "div", quote=True)
+        inner = escape(el.text or "") + "".join(_el_to_html(c) for c in el)
         return f'<section class="{cls}">{inner}</section>{tail}'
 
     # <lb> → <br>
@@ -69,7 +74,7 @@ def _el_to_html(el) -> str:
         return f"<br>{tail}"
 
     # Everything else: recurse, preserving text
-    inner = (el.text or "") + "".join(_el_to_html(c) for c in el)
+    inner = escape(el.text or "") + "".join(_el_to_html(c) for c in el)
     return inner + tail
 
 
@@ -154,13 +159,13 @@ def convert_tree(root, text_id: int | str, *, embed_css: bool = False) -> str:
     if not bodies:
         raise ValueError(f"No <body> found in TEI tree (text_id={text_id})")
     body_el = bodies[0]
-    body_html = (body_el.text or "") + "".join(_el_to_html(c) for c in body_el)
+    body_html = escape(body_el.text or "") + "".join(_el_to_html(c) for c in body_el)
 
     html = _HTML_TEMPLATE.format(
-        text_id=text_id,
-        title=title or "TEI Document",
-        author=author,
-        date=date,
+        text_id=escape(str(text_id)),
+        title=escape(title or "TEI Document"),
+        author=escape(author),
+        date=escape(date),
         body=body_html,
     )
 
@@ -175,5 +180,5 @@ def convert_tree(root, text_id: int | str, *, embed_css: bool = False) -> str:
 
 def convert_file(path, text_id: int | str, *, embed_css: bool = False) -> str:
     """Parse *path* with lxml and call convert_tree()."""
-    tree = etree.parse(str(path))
+    tree = etree.parse(str(path), etree.XMLParser(resolve_entities=False, no_network=True))
     return convert_tree(tree.getroot(), text_id, embed_css=embed_css)
