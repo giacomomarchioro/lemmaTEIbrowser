@@ -5,25 +5,33 @@ from xml.etree import ElementTree as ET
 from lxml import etree
 from sqlalchemy import create_engine, text as sql_text
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
 
-from .models import Base, TextEntry, Word, Concept, Phraseme, PhrasemeWord
+from .models import Base, TextEntry, Word, Concept, Phraseme, PhrasemeWord, get_session
 from .tei_converter import convert_tree
 from .xml_utils import ensure_word_ids
+from .config import database_path, html_directory
 
 
 TEI_NS = {'tei': 'http://www.tei-c.org/ns/1.0'}
 
 
 @click.command()
-@click.argument('folder_path', type=click.Path(exists=True))
-@click.option('--db-path', default='tei_database.db', help='Database file path')
+@click.argument('folder_path', type=click.Path(exists=True, file_okay=False))
+@click.option('--db-path', type=click.Path(dir_okay=False),
+              help='Database file (overrides DATABASE_PATH; default: project tei_database.db)')
 @click.option('--html-dir', type=click.Path(file_okay=False),
-              default=str(Path(__file__).parent / 'static' / 'texts'),
-              help='Directory for generated full-text HTML pages')
+              help='Generated HTML directory (overrides TEXT_HTML_DIR; default: package static/texts)')
 def import_tei(folder_path, db_path, html_dir):
     """Import .tei.xml files from FOLDER_PATH into database."""
+    folder_path = Path(folder_path).expanduser().resolve()
+    db_path = database_path(db_path)
+    html_dir = html_directory(html_dir)
+    if not db_path.parent.is_dir():
+        raise click.ClickException(f'Database parent directory does not exist: {db_path.parent}')
     click.echo(f"Importing TEI files from: {folder_path}")
     click.echo(f"Database: {db_path}")
+    click.echo(f"Full-text HTML: {html_dir}")
     
     # Create database
     engine = create_engine(f'sqlite:///{db_path}', echo=False)
@@ -255,10 +263,42 @@ def get_surrounding_text(element, root, window=25):
 @click.option('--host', default='127.0.0.1', help='Host to bind to')
 @click.option('--port', default=5000, help='Port to bind to')
 @click.option('--debug/--no-debug', default=True, help='Enable debug mode')
-def serve(host, port, debug):
+@click.option('--db-path', type=click.Path(dir_okay=False),
+              help='Existing database (overrides DATABASE_PATH; default: project tei_database.db)')
+@click.option('--html-dir', type=click.Path(file_okay=False),
+              help='Full-text HTML directory (overrides TEXT_HTML_DIR; default: package static/texts)')
+def serve(host, port, debug, db_path, html_dir):
     """Run the Flask development server."""
     from . import create_app
-    app = create_app()
+    db_path = database_path(db_path)
+    html_dir = html_directory(html_dir)
+    click.echo(f"Database: {db_path}")
+    click.echo(f"Full-text HTML: {html_dir}")
+    if not db_path.is_file():
+        raise click.ClickException(
+            f'Database file does not exist: {db_path}. '
+            'Use --db-path to select an existing database, or run lemma-import first.'
+        )
+    try:
+        app = create_app(config_overrides={
+            'SQLALCHEMY_DATABASE_URI': f'sqlite:///{db_path}',
+            'DATABASE_PATH': str(db_path),
+            'TEXT_HTML_DIR': str(html_dir),
+        })
+        with get_session() as session:
+            text_count = session.query(TextEntry).count()
+            word_count = session.query(Word).count()
+    except SQLAlchemyError as error:
+        raise click.ClickException(
+            f'Unable to open database {db_path}. Check file and parent directory permissions. {error}'
+        ) from error
+    click.echo(f"Templates: {Path(app.root_path) / 'templates'}")
+    click.echo(f"Static assets: {app.static_folder}")
+    click.echo(f"Database contents: {text_count} texts, {word_count} words")
+    if word_count == 0:
+        click.echo('Warning: this database contains no words. Select the imported database with --db-path.', err=True)
+    if not html_dir.is_dir():
+        click.echo('Warning: full-text HTML directory is missing; full-text links will return 404.', err=True)
     click.echo(f"Starting server at http://{host}:{port}")
     app.run(host=host, port=port, debug=debug)
 

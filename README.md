@@ -35,6 +35,56 @@ lemma-serve
 ```
 To run the application. The application will be available at http://127.0.0.1:5000.
 
+# Database and file locations
+
+`lemma-serve` searches the **SQLite database**, not the source XML files.
+The XML folder is read only by `lemma-import`. Full-text links load the HTML
+pages generated during import; templates, JavaScript and CSS come from the
+installed `lemmaTEIbrowser` package.
+
+Both commands use the same defaults, regardless of the terminal's directory:
+
+| Resource | Default location |
+| --- | --- |
+| Database | `tei_database.db` in the project root (parent of the installed package) |
+| Full-text HTML | `lemmaTEIbrowser/static/texts` |
+| Templates | `lemmaTEIbrowser/templates` |
+| JavaScript and CSS | `lemmaTEIbrowser/static` |
+
+For a database already imported inside `DiSMIdataset`, run from the project root:
+
+```bash
+lemma-serve --db-path ./DiSMIdataset/tei_database.db
+```
+
+**Explicit relative paths are relative to the terminal's current directory.**
+From any other directory, use an absolute path, for example:
+
+```bash
+lemma-serve --db-path "$HOME/Desktop/lemmaTEIbrowser/DiSMIdataset/tei_database.db"
+```
+
+To choose your own database and HTML directory, use the same paths for both commands:
+
+```bash
+lemma-import ./DiSMIdataset/tei-xml --db-path ./my_database.db --html-dir ./my_texts
+lemma-serve --db-path ./my_database.db --html-dir ./my_texts
+```
+
+Alternatively, set `DATABASE_PATH` and `TEXT_HTML_DIR` environment variables.
+CLI options take priority over environment variables, which take priority over
+the defaults. `~` is expanded and paths are resolved to absolute paths.
+Use a filesystem path for `--db-path` or `DATABASE_PATH`, not a `sqlite:///` URL.
+Both commands print their resolved database and HTML locations;
+`lemma-serve` also prints template and static-asset locations. It reports a
+missing database instead of creating an empty one, and warns if the selected
+database contains no words. SQLite needs an existing
+parent directory and permission to write database journal files there.
+
+Changing the selected database does not import data or regenerate HTML.
+Reimporting the same files currently adds duplicate entries, so do not reimport
+just to switch the server to an existing database.
+
 # 
 
 Ricerca per lemma:
