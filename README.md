@@ -19,8 +19,15 @@ git clone https://github.com/gpdsm/DiSMIdataset
 Now we can use the command `lemma-import` to import the entries:
 
 ```
-lemma-import ./tei-xml-ids
+lemma-import ./DiSMIdataset/tei-xml
 ```
+Missing word `xml:id` attributes are assigned automatically during import,
+without changing the source XML files. Existing IDs are preserved, and the
+same IDs are used in the database and generated HTML pages.
+
+The import also generates the HTML pages used by the “Vedi nel testo” links
+in `lemmaTEIbrowser/static/texts`. Failed files are reported with a nonzero
+exit status; successfully imported files are preserved.
 After the import is completed we use the command:
 
 ```
@@ -55,7 +62,7 @@ Con `versi rotti` trova:
 e le parole nel target.
 
 Ricerca per occorrenza:
-http://localhost:5000/?q=versi&type=occurence
+http://localhost:5000/?q=versi&type=occurrence
 
 Trova `versi` trova:
 <w lemma="verso" xml:id="w1">versi</w> 
