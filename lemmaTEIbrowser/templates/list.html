@@ -367,8 +367,8 @@
             
             <div class="search-row filter-row">
                 <input type="text" id="concept-id" placeholder="Concept ID">
-                <input type="date" id="filter-notBefore" placeholder="Da">
-                <input type="date" id="filter-notAfter" placeholder="A">
+                <input type="text" pattern="^\d{4}(-\d{1,2}(-\d{1,2})?)?$" id="filter-notBefore" placeholder="Da">
+                <input type="text" pattern="^\d{4}(-\d{1,2}(-\d{1,2})?)?$" id="filter-notAfter" placeholder="A">
                 <input type="text" id="filter-text-ids" placeholder="Text IDs (1,2,3)">
             </div>
             
