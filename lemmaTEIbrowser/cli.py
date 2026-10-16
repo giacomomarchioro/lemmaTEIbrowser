@@ -2,10 +2,13 @@
 import click
 from pathlib import Path
 from xml.etree import ElementTree as ET
+from lxml import etree
 from sqlalchemy import create_engine, text as sql_text
 from sqlalchemy.orm import sessionmaker
 
 from .models import Base, TextEntry, Word, Concept, Phraseme, PhrasemeWord
+from .tei_converter import convert_tree
+from .xml_utils import ensure_word_ids
 
 
 TEI_NS = {'tei': 'http://www.tei-c.org/ns/1.0'}
@@ -14,7 +17,10 @@ TEI_NS = {'tei': 'http://www.tei-c.org/ns/1.0'}
 @click.command()
 @click.argument('folder_path', type=click.Path(exists=True))
 @click.option('--db-path', default='tei_database.db', help='Database file path')
-def import_tei(folder_path, db_path):
+@click.option('--html-dir', type=click.Path(file_okay=False),
+              default=str(Path(__file__).parent / 'static' / 'texts'),
+              help='Directory for generated full-text HTML pages')
+def import_tei(folder_path, db_path, html_dir):
     """Import .tei.xml files from FOLDER_PATH into database."""
     click.echo(f"Importing TEI files from: {folder_path}")
     click.echo(f"Database: {db_path}")
@@ -27,22 +33,29 @@ def import_tei(folder_path, db_path):
     
     # Find TEI files
     folder = Path(folder_path)
-    tei_files = list(folder.glob('*.tei.xml'))
+    tei_files = sorted(folder.glob('*.tei.xml'))
     click.echo(f"Found {len(tei_files)} TEI XML files")
     
     # Process files
-    batch_size = 10
+    failures = 0
+    output_folder = Path(html_dir)
+    output_folder.mkdir(parents=True, exist_ok=True)
     with click.progressbar(tei_files, label='Processing files') as bar:
-        for i, file_path in enumerate(bar):
+        for file_path in bar:
             try:
-                parse_tei_file(file_path, session)
-                
-                if (i + 1) % batch_size == 0:
-                    session.commit()
+                root = ET.parse(file_path).getroot()
+                text_entry = parse_tei_file(file_path, session, root=root)
+                # Render the same ID-enriched tree used for database import.
+                html = convert_tree(etree.fromstring(ET.tostring(root)), text_entry.id)
+                session.flush()
+                output_file = output_folder / f'{text_entry.sourceFile}.tei.html'
+                output_file.write_text(html, encoding='utf-8')
+                session.commit()
                     
             except Exception as e:
                 click.echo(f"\nError processing {file_path.name}: {e}", err=True)
                 session.rollback()
+                failures += 1
     
     session.commit()
     
@@ -69,15 +82,20 @@ def import_tei(folder_path, db_path):
         click.echo(f"  Concepts: {stats[2]}")
         click.echo(f"  Phrasemes: {stats[3]}")
     
-    click.echo(f"\nDatabase created successfully: {db_path}")
+    if not failures:
+        click.echo(f"\nDatabase created successfully: {db_path}")
     
     session.close()
+    engine.dispose()
+    if failures:
+        raise click.ClickException(f'{failures} file(s) failed to import; successful files were preserved.')
 
 
-def parse_tei_file(file_path, session):
+def parse_tei_file(file_path, session, *, root=None):
     """Parse a single TEI XML file."""
-    tree = ET.parse(file_path)
-    root = tree.getroot()
+    if root is None:
+        root = ET.parse(file_path).getroot()
+    ensure_word_ids(root)
     
     # Extract metadata
     header = root.find('.//tei:teiHeader', TEI_NS)
@@ -110,7 +128,7 @@ def parse_tei_file(file_path, session):
         body = root.find('.//body')
     
     if body is None:
-        return
+        raise ValueError('No <body> found in TEI file')
     
     # Process <w> elements
     w_elements = body.findall('.//tei:w', TEI_NS)
@@ -191,6 +209,8 @@ def parse_tei_file(file_path, session):
                 )
                 session.add(phraseme_word)
 
+    return text_entry
+
 
 def get_surrounding_text(element, root, window=25):
     """Extract context around a <w> element."""
@@ -215,49 +235,21 @@ def get_surrounding_text(element, root, window=25):
     if not word_text:
         return full_text[:500]
     
-    # Build word list from parent's text
-    words = full_text.split()
-    
-    # Find the position of our specific word
-    # We need to match by checking which word in the parent corresponds to our element
-    try:
-        # Get text before our element within parent
-        text_before = []
-        found_element = False
-        
-        for child in parent.iter():
-            if child is element:
-                found_element = True
-                break
-            if child.text:
-                text_before.append(child.text)
-            if child.tail:
-                text_before.append(child.tail)
-        
-        # Also add parent's text if it comes before
-        if parent.text:
-            before_text = parent.text
-            for child in parent:
-                if child is element:
-                    break
-                if child is not element and hasattr(child, 'tail') and child.tail:
-                    before_text += child.tail
-            text_before.insert(0, before_text)
-        
-        # Count words before our element
-        words_before = ' '.join(text_before).split()
-        word_idx = len(words_before)
-        
-        # Extract context window
-        start = max(0, word_idx - window)
-        end = min(len(words), word_idx + window + 1)
-        context = ' '.join(words[start:end])
-        
-        return context if context else full_text[:500]
-        
-    except Exception as e:
-        # Fallback: return limited parent text
-        return full_text[:500]
+    before = parent.text or ''
+    after = element.tail or ''
+    found = False
+    for child in parent:
+        if child is element:
+            found = True
+        elif found:
+            after += ''.join(child.itertext()) + (child.tail or '')
+        else:
+            before += ''.join(child.itertext()) + (child.tail or '')
+
+    # Slice around this element, not the first identical surface form.
+    left = before.split()[-window:] if window > 0 else []
+    right = after.split()[:window] if window > 0 else []
+    return ' '.join(left + [word_text] + right)
 
 @click.command()
 @click.option('--host', default='127.0.0.1', help='Host to bind to')
