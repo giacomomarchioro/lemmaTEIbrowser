@@ -29,14 +29,24 @@ def get_occurrences():
     
     try:
         # Pagination
-        page = request.args.get('page', 1, type=int)
-        size = min(request.args.get('size', 50, type=int), 500)
+        try:
+            page = int(request.args.get('page', 1))
+            size = min(int(request.args.get('size', 50)), 500)
+            if page < 1 or size < 1:
+                raise ValueError
+            if request.args.get('text_id'):
+                if any(int(tid.strip()) < 1 for tid in request.args['text_id'].split(',')):
+                    raise ValueError
+            concept_id = int(request.args['concept_id']) if request.args.get('concept_id') else None
+            if concept_id is not None and concept_id < 1:
+                raise ValueError
+        except ValueError:
+            return jsonify({'error': 'page, size, concept_id and text_id must contain positive integers'}), 400
         offset = (page - 1) * size
         
         # Search parameters
         search_query = request.args.get('q')
         search_type = request.args.get('type', 'lemma')
-        concept_id = request.args.get('concept_id', type=int)
         
         # Filters
         not_before = request.args.get('notBefore')
@@ -49,7 +59,7 @@ def get_occurrences():
         # Priority: concept_id search
         if concept_id:
             data = search_by_concept_id(
-                session, concept_id, not_before, not_after, text_ids, 0, 9999
+                session, concept_id, not_before, not_after, text_ids, offset, size
             )
             all_results = data['results']
             total_count = data['count']
@@ -59,40 +69,42 @@ def get_occurrences():
             if search_type == 'lemma':
                 # Search only by lemma
                 data = search_by_lemma(
-                    session, search_query, not_before, not_after, text_ids, 0, 9999
+                    session, search_query, not_before, not_after, text_ids, offset, size
                 )
                 all_results = data['results']
                 
             elif search_type == 'occurrence':
                 # Search only by occurrence
                 data = search_by_occurrence(
-                    session, search_query, not_before, not_after, text_ids, 0, 9999
+                    session, search_query, not_before, not_after, text_ids, offset, size
                 )
                 all_results = data['results']
                 
             elif search_type == 'phraseme':
                 # Search only by normalized_form
                 data = search_by_phraseme(
-                    session, search_query, not_before, not_after, text_ids, 0, 9999
+                    session, search_query, not_before, not_after, text_ids, offset, size
                 )
                 all_results = data['results']
                 
             elif search_type == 'concept':
                 # Search by concept URL
                 data = search_by_concept(
-                    session, search_query, not_before, not_after, text_ids, 0, 9999
+                    session, search_query, not_before, not_after, text_ids, offset, size
                 )
                 all_results = data['results']
                 
             elif search_type == 'alternativeLabel':
                 # Search both lemma AND normalized_form
                 lemma_data = search_by_lemma(
-                    session, search_query, not_before, not_after, text_ids, 0, 9999
+                    session, search_query, not_before, not_after, text_ids, offset, size
                 )
                 phraseme_data = search_by_phraseme(
-                    session, search_query, not_before, not_after, text_ids, 0, 9999
+                    session, search_query, not_before, not_after, text_ids,
+                    max(0, offset - lemma_data['count']), size - len(lemma_data['results'])
                 )
                 all_results = lemma_data['results'] + phraseme_data['results']
+                data = {'count': lemma_data['count'] + phraseme_data['count']}
                 
             else:
                 return jsonify({'error': f'Invalid type: {search_type}. Use: lemma, occurrence, phraseme, concept, alternativeLabel'}), 400
@@ -107,13 +119,13 @@ def get_occurrences():
                     unique_results.append(result)
             
             all_results = unique_results
-            total_count = len(all_results)
+            total_count = data['count']
             
         else:
             return jsonify({'error': 'Either q or concept_id parameter required'}), 400
         
-        # Apply pagination to combined results
-        paginated_results = all_results[offset:offset + size]
+        # Search helpers have already applied database-level pagination.
+        paginated_results = all_results
         
         # Pagination
         last_page = (total_count + size - 1) // size if total_count > 0 else 1
@@ -143,52 +155,55 @@ def get_occurrences():
 
 def search_by_concept_id(session, concept_id, not_before, not_after, text_ids, offset, size):
     """Search by exact concept ID."""
-    concept = session.query(Concept).filter_by(id_concept=concept_id).first()
-    if not concept:
-        return {'results': [], 'count': 0}
-    
+    return search_by_concept_ids(session, [concept_id], not_before, not_after, text_ids, offset, size)
+
+
+def search_by_concept_ids(session, concept_ids, not_before, not_after, text_ids, offset, size):
+    """Paginate matching words followed by matching phrasemes."""
     results = []
     
     # Words
     word_query = session.query(Word).options(
-        joinedload(Word.text)
-    ).filter(Word.id_concept == concept_id)
+        joinedload(Word.text),
+        joinedload(Word.concept)
+    ).filter(Word.id_concept.in_(concept_ids))
     word_query = apply_filters(word_query, Word, not_before, not_after, text_ids, session)
     
     total_words = word_query.count()
-    words = word_query.limit(size).offset(offset).all()
+    words = word_query.order_by(Word.id_word_entry).limit(size).offset(offset).all()
     
     for w in words:
-        results.append(build_word_result(w, concept))
+        results.append(build_word_result(w))
     
     # Phrasemes
     phraseme_query = session.query(Phraseme).options(
         joinedload(Phraseme.text),
+        joinedload(Phraseme.concept),
         joinedload(Phraseme.words).joinedload(PhrasemeWord.word)
-    ).filter(Phraseme.id_concept == concept_id)
+    ).filter(Phraseme.id_concept.in_(concept_ids))
     phraseme_query = apply_filters(phraseme_query, Phraseme, not_before, not_after, text_ids, session)
     
     total_phrasemes = phraseme_query.count()
     remaining = size - len(results)
     phraseme_offset = max(0, offset - total_words)
-    phrasemes = phraseme_query.limit(remaining).offset(phraseme_offset).all()
+    phrasemes = phraseme_query.order_by(Phraseme.id).limit(remaining).offset(phraseme_offset).all()
     
     for p in phrasemes:
-        results.append(build_phraseme_result(p, concept))
+        results.append(build_phraseme_result(p))
     
     return {'results': results, 'count': total_words + total_phrasemes}
 
 
 def search_by_concept(session, query, not_before, not_after, text_ids, offset, size):
     """Search by concept URL."""
-    concept = session.query(Concept).filter(
+    concepts = session.query(Concept).filter(
         Concept.URLconcept.ilike(f'%{query}%')
-    ).first()
+    ).all()
     
-    if not concept:
+    if not concepts:
         return {'results': [], 'count': 0}
     
-    return search_by_concept_id(session, concept.id_concept, not_before, not_after, text_ids, offset, size)
+    return search_by_concept_ids(session, [c.id_concept for c in concepts], not_before, not_after, text_ids, offset, size)
 
 
 def search_by_lemma(session, query, not_before, not_after, text_ids, offset, size):
@@ -200,7 +215,7 @@ def search_by_lemma(session, query, not_before, not_after, text_ids, offset, siz
     
     word_query = apply_filters(word_query, Word, not_before, not_after, text_ids, session)
     total = word_query.count()
-    words = word_query.limit(size).offset(offset).all()
+    words = word_query.order_by(Word.id_word_entry).limit(size).offset(offset).all()
     
     results = [build_word_result(w) for w in words]
     return {'results': results, 'count': total}
@@ -215,7 +230,7 @@ def search_by_occurrence(session, query, not_before, not_after, text_ids, offset
     
     word_query = apply_filters(word_query, Word, not_before, not_after, text_ids, session)
     total = word_query.count()
-    words = word_query.limit(size).offset(offset).all()
+    words = word_query.order_by(Word.id_word_entry).limit(size).offset(offset).all()
     
     results = [build_word_result(w) for w in words]
     return {'results': results, 'count': total}
@@ -246,7 +261,7 @@ def search_by_phraseme(session, query, not_before, not_after, text_ids, offset, 
     
     phraseme_query = apply_filters(phraseme_query, Phraseme, not_before, not_after, text_ids, session)
     total = phraseme_query.count()
-    phrasemes = phraseme_query.limit(size).offset(offset).all()
+    phrasemes = phraseme_query.order_by(Phraseme.id).limit(size).offset(offset).all()
     
     results = [build_phraseme_result(p) for p in phrasemes]
     return {'results': results, 'count': total}
@@ -342,4 +357,3 @@ def get_statistics():
         return jsonify({'error': str(e)}), 500
     finally:
         session.close()
-
